@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-clickhouse client -n <<-EOSQL
+clickhouse client -h 127.0.0.1 -n <<-EOSQL
     CREATE TABLE IF NOT EXISTS flows
     (
         TimeReceived UInt64,
@@ -115,6 +115,7 @@ clickhouse client -n <<-EOSQL
 
         FROM flows_raw
         GROUP BY Date, Timeslot, SamplerAddress, InIf, \`ETypeMap.EType\`;
+
     CREATE TABLE IF NOT EXISTS Event_queue
     (
       message String
@@ -125,6 +126,7 @@ clickhouse client -n <<-EOSQL
           kafka_group_name = 'ndpid',
           kafka_format = 'JSONAsString',
           kafka_num_consumers = 5;
+
     CREATE TABLE IF NOT EXISTS Flow
     (
         source String,
@@ -149,6 +151,7 @@ clickhouse client -n <<-EOSQL
         ndpi_breed String
     ) ENGINE = MergeTree()
       ORDER BY (flow_id);
+
     CREATE MATERIALIZED VIEW IF NOT EXISTS Flow_view to Flow
     AS SELECT
         JSONExtractString(message, 'source') AS source,
