@@ -29,7 +29,7 @@ clickhouse client -h 127.0.0.1 -n <<-EOSQL
         Packets UInt64
     ) ENGINE = Kafka()
     SETTINGS
-        kafka_broker_list = '124.219.108.6:9092',
+        kafka_broker_list = 'kafka:9092',
         kafka_topic_list = 'flows',
         kafka_group_name = 'clickhouse',
         kafka_format = 'Protobuf',
@@ -121,7 +121,7 @@ clickhouse client -h 127.0.0.1 -n <<-EOSQL
       message String
     ) ENGINE = Kafka()
       SETTINGS
-          kafka_broker_list = '124.219.108.6:9092',
+          kafka_broker_list = 'kafka:9092',
           kafka_topic_list = 'events',
           kafka_group_name = 'ndpid',
           kafka_format = 'JSONAsString',
@@ -146,6 +146,7 @@ clickhouse client -h 127.0.0.1 -n <<-EOSQL
         src_port UInt32,
         dst_port UInt32,
         ndpi_proto String,
+        ndpi_proto_ip String,
         ndpi_category String,
         ndpi_breed String
     ) ENGINE = MergeTree()
@@ -170,8 +171,93 @@ clickhouse client -h 127.0.0.1 -n <<-EOSQL
         JSONExtract(message, 'src_port', 'UInt32') AS src_port,
         JSONExtract(message, 'dst_port', 'UInt32') AS dst_port,
         JSONExtractString(message, 'ndpi', 'proto') AS ndpi_proto,
+        JSONExtractString(message, 'ndpi', 'proto_by_ip') AS ndpi_proto_ip,
         JSONExtractString(message, 'ndpi', 'category') AS ndpi_category,
         JSONExtractString(message, 'ndpi', 'breed') AS ndpi_breed
     FROM Event_queue
     WHERE notEmpty(flow_event_name);
+    CREATE TABLE IF NOT EXISTS dnsflow
+    (
+        flow_first_seen DateTime,
+        src_ip String,
+        dst_ip String,
+        src_port UInt32,
+        dst_port UInt32,
+        ndpi_proto String,
+        ndpi_proto_ip String,
+        num_queries Int,
+        num_answers Int,
+        reply_code Int,
+        query_type Int,
+        rsp_type Int
+    ) ENGINE = MergeTree()
+      ORDER BY (flow_first_seen);
+    CREATE MATERIALIZED VIEW IF NOT EXISTS dnsflow_view to dnsflow
+    AS SELECT
+        FROM_UNIXTIME(intDiv(JSONExtract(message, 'flow_first_seen', 'UInt64'),1000000)) AS flow_first_seen,
+        JSONExtractString(message, 'src_ip') AS src_ip,
+        JSONExtractString(message, 'dst_ip') AS dst_ip,
+        JSONExtract(message, 'src_port', 'UInt32') AS src_port,
+        JSONExtract(message, 'dst_port', 'UInt32') AS dst_port,
+        JSONExtractString(message, 'ndpi', 'proto') AS ndpi_proto,
+        JSONExtractString(message, 'ndpi', 'proto_by_ip') AS ndpi_proto_ip,
+        JSONExtractInt(message, 'ndpi', 'dns', 'num_queries') AS num_queries,
+        JSONExtractInt(message, 'ndpi', 'dns', 'num_answers') AS num_answers,
+        JSONExtractInt(message, 'ndpi', 'dns', 'reply_code') AS reply_code,
+        JSONExtractInt(message, 'ndpi', 'dns', 'query_type') AS query_type,
+        JSONExtractInt(message, 'ndpi', 'dns', 'rsp_type') AS rsp_type
+    FROM Event_queue
+    WHERE ndpi_proto LIKE 'DNS%';
+    CREATE TABLE IF NOT EXISTS snmpflow
+    (
+        flow_first_seen DateTime,
+        src_ip String,
+        dst_ip String,
+        src_port UInt32,
+        dst_port UInt32,
+        ndpi_proto String,
+        ndpi_proto_ip String,
+        version Int,
+        primitive Int
+    ) ENGINE = MergeTree()
+      ORDER BY (flow_first_seen);
+    CREATE MATERIALIZED VIEW IF NOT EXISTS snmpflow_view to snmpflow
+    AS SELECT
+        FROM_UNIXTIME(intDiv(JSONExtract(message, 'flow_first_seen', 'UInt64'),1000000)) AS flow_first_seen,
+        JSONExtractString(message, 'src_ip') AS src_ip,
+        JSONExtractString(message, 'dst_ip') AS dst_ip,
+        JSONExtract(message, 'src_port', 'UInt32') AS src_port,
+        JSONExtract(message, 'dst_port', 'UInt32') AS dst_port,
+        JSONExtractString(message, 'ndpi', 'proto') AS ndpi_proto,
+        JSONExtractString(message, 'ndpi', 'proto_by_ip') AS ndpi_proto_ip,
+        JSONExtractInt(message, 'ndpi', 'snmp', 'version') AS version,
+        JSONExtractInt(message, 'ndpi', 'snmp', 'primitive') AS primitive
+    FROM Event_queue
+    WHERE ndpi_proto LIKE 'SNMP%';
+    CREATE TABLE IF NOT EXISTS ntpflow
+    (
+        flow_first_seen DateTime,
+        src_ip String,
+        dst_ip String,
+        src_port UInt32,
+        dst_port UInt32,
+        ndpi_proto String,
+        ndpi_proto_ip String,
+        request_code Int,
+        version Int
+    ) ENGINE = MergeTree()
+      ORDER BY (flow_first_seen);
+    CREATE MATERIALIZED VIEW IF NOT EXISTS ntpflow_view to ntpflow
+    AS SELECT
+        FROM_UNIXTIME(intDiv(JSONExtract(message, 'flow_first_seen', 'UInt64'),1000000)) AS flow_first_seen,
+        JSONExtractString(message, 'src_ip') AS src_ip,
+        JSONExtractString(message, 'dst_ip') AS dst_ip,
+        JSONExtract(message, 'src_port', 'UInt32') AS src_port,
+        JSONExtract(message, 'dst_port', 'UInt32') AS dst_port,
+        JSONExtractString(message, 'ndpi', 'proto') AS ndpi_proto,
+        JSONExtractString(message, 'ndpi', 'proto_by_ip') AS ndpi_proto_ip,
+        JSONExtractInt(message, 'ndpi', 'ntp', 'request_code') AS request_code,
+        JSONExtractInt(message, 'ndpi', 'ntp', 'version') AS version
+    FROM Event_queue
+    WHERE ndpi_proto LIKE 'NTP%';
 EOSQL
